@@ -1,0 +1,420 @@
+import axios from "axios";
+import { sql } from "../config/db.js";
+import { buildRepositoryContext } from "./githubCollector.service.js";
+import { analyzeRepositoryWithAI } from "./ai.service.js";
+import { saveRepositoryAnalysis } from "./analysis.service.js"
+
+export const syncRepositoriesService = async (userId) => {
+    /*
+        STEP 1
+        Get GitHub access token
+    */
+    const tokenResult = await sql`
+        SELECT access_token
+        FROM oauth_tokens
+        WHERE user_id = ${userId}
+        AND provider = 'github'
+        LIMIT 1
+    `;
+
+
+
+    console.log(tokenResult)
+    if (tokenResult.length === 0) {
+        throw new Error("GitHub account is not connected.");
+    }
+
+    const accessToken = tokenResult[0].access_token;
+    console.log(accessToken)
+    /*
+        STEP 2
+        Fetch repositories from GitHub
+    */
+    const response = await axios.get(
+        "https://api.github.com/user/repos",
+        {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: "application/vnd.github+json",
+            },
+            params: {
+                per_page: 100,
+                sort: "updated",
+            },
+        }
+    );
+
+    const repos = response.data;
+
+    /*
+        STEP 3
+        Insert / Update repositories
+    */
+    for (const repo of repos) {
+        const existingRepo = await sql`
+            SELECT id
+            FROM repositories
+            WHERE github_repo_id = ${repo.id}
+            LIMIT 1
+        `;
+
+        if (existingRepo.length > 0) {
+            await sql`
+                UPDATE repositories
+                SET
+                    name = ${repo.name},
+                    owner = ${repo.owner.login},
+                    description = ${repo.description},
+                    default_branch = ${repo.default_branch},
+                    html_url = ${repo.html_url},
+                    private = ${repo.private},
+                    fork = ${repo.fork},
+                    updated_at = NOW()
+                WHERE github_repo_id = ${repo.id}
+            `;
+        } else {
+            await sql`
+                INSERT INTO repositories (
+                    user_id,
+                    github_repo_id,
+                    name,
+                    owner,
+                    description,
+                    default_branch,
+                    html_url,
+                    private,
+                    fork
+                )
+                VALUES (
+                    ${userId},
+                    ${repo.id},
+                    ${repo.name},
+                    ${repo.owner.login},
+                    ${repo.description},
+                    ${repo.default_branch},
+                    ${repo.html_url},
+                    ${repo.private},
+                    ${repo.fork}
+                )
+            `;
+        }
+    }
+
+    /*
+        STEP 4
+        Return response
+    */
+    return {
+        success: true,
+        message: "Repositories synced successfully.",
+        count: repos.length,
+    };
+};
+
+export const getRepositoriesService = async (userId) => {
+
+    const repositories = await sql`
+        SELECT
+            id,
+            github_repo_id,
+            name,
+            owner,
+            description,
+            default_branch,
+            html_url,
+            private,
+            fork,
+            included,
+            created_at,
+            updated_at
+        FROM repositories
+        WHERE user_id = ${userId}
+        ORDER BY updated_at DESC
+    `;
+
+    return {
+        success: true,
+        count: repositories.length,
+        repositories,
+    };
+};
+
+export const toggleRepositoryService = async (userId, repoId) => {
+
+    // Check repository belongs to the authenticated user
+    const repository = await sql`
+        SELECT id, included
+        FROM repositories
+        WHERE id = ${repoId}
+        AND user_id = ${userId}
+        LIMIT 1
+    `;
+
+    if (repository.length === 0) {
+        throw new Error("Repository not found.");
+    }
+
+    const newIncludedValue = !repository[0].included;
+
+    await sql`
+        UPDATE repositories
+        SET
+            included = ${newIncludedValue},
+            updated_at = NOW()
+        WHERE id = ${repoId}
+    `;
+
+    return {
+        success: true,
+        message: `Repository ${newIncludedValue ? "included" : "excluded"
+            } successfully.`,
+        included: newIncludedValue,
+    };
+};
+
+
+
+export const analyzeRepositoryService = async (userId, repoId) => {
+    // ==================================================
+    // STEP 1: Get repository + GitHub access token
+    // ==================================================s
+    const repositories = await sql`
+        SELECT r.*, o.access_token
+        FROM repositories r
+        JOIN oauth_tokens o
+            ON r.user_id = o.user_id
+        WHERE
+            r.id = ${repoId}
+            AND r.user_id = ${userId}
+            AND o.provider = 'github'
+        LIMIT 1
+    `;
+
+    if (!repositories.length) {
+        throw new Error("Repository not found");
+    }
+
+    const repo = repositories[0];
+    const accessToken = repo.access_token;
+
+    const headers = {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github+json",
+    };
+
+    // ==================================================
+    // STEP 2: Fetch GitHub metadata
+    // ==================================================
+
+    const [repoRes, languagesRes, commitsRes] = await Promise.all([
+        axios.get(
+            `https://api.github.com/repos/${repo.owner}/${repo.name}`,
+            { headers }
+        ),
+        axios.get(
+            `https://api.github.com/repos/${repo.owner}/${repo.name}/languages`,
+            { headers }
+        ),
+        axios.get(
+            `https://api.github.com/repos/${repo.owner}/${repo.name}/commits`,
+            {
+                headers,
+                params: {
+                    per_page: 1,
+                },
+            }
+        ),
+    ]);
+
+    const githubRepo = repoRes.data;
+    const languages = languagesRes.data;
+
+
+
+
+    // ==================================================
+    // STEP 3: README
+    // ==================================================
+
+    let hasReadme = false;
+
+    try {
+        await axios.get(
+            `https://api.github.com/repos/${repo.owner}/${repo.name}/readme`,
+            { headers }
+        );
+
+        hasReadme = true;
+    } catch {
+        hasReadme = false;
+    }
+
+    // ==================================================
+    // STEP 4: Latest commit
+    // ==================================================
+
+    const latestCommit =
+        commitsRes.data.length > 0
+            ? commitsRes.data[0].commit.author.date
+            : null;
+
+
+    console.log(latestCommit);
+
+
+    const existingAnalysis = await sql`
+    SELECT latest_commit_at
+    FROM repository_analysis
+    WHERE repository_id = ${repo.id}
+    LIMIT 1
+`;
+
+    if (
+        existingAnalysis.length > 0 &&
+        new Date(existingAnalysis[0].latest_commit_at) >= new Date(latestCommit)
+    ) {
+        console.log("analysis is already done!")
+        return {
+            success: true,
+            cached: true,
+            analysis: existingAnalysis[0],
+        };
+    }
+    // ==================================================
+    // STEP 5: Primary language
+    // ==================================================
+
+
+    const primaryLanguage =
+        githubRepo.language ||
+        (Object.keys(languages).length
+            ? Object.keys(languages).reduce((a, b) =>
+                languages[a] > languages[b] ? a : b
+            )
+            : null);
+
+    // ==================================================
+    // STEP 6: Collect repository context
+    // ==================================================
+
+    const context = await buildRepositoryContext({
+        accessToken,
+        owner: repo.owner,
+        repo: repo.name,
+        githubRepo,
+    });
+
+    // ==================================================
+    // STEP 7: AI Analysis
+    // ==================================================
+
+    const aiAnalysis = await analyzeRepositoryWithAI(context);
+
+    /*
+        aiAnalysis should return:
+
+        {
+            summary,
+            strengths,
+            weaknesses,
+            recommendations,
+            architecture,
+            technologies,
+            scores: {
+                documentation,
+                codeQuality,
+                maintainability,
+                security,
+                overall
+            }
+        }
+    */
+
+    // ==================================================
+    // STEP 8: Save everything
+    // ==================================================
+
+    await saveRepositoryAnalysis(repo.id, {
+        // -------- Existing metadata --------
+
+        languages,
+        topics: githubRepo.topics,
+
+        hasReadme,
+        hasLicense: !!githubRepo.license,
+
+        latestCommit,
+
+        homepage: githubRepo.homepage,
+
+        stars: githubRepo.stargazers_count,
+        forksCount: githubRepo.forks_count,
+        watchersCount: githubRepo.watchers_count,
+        openIssues: githubRepo.open_issues_count,
+
+        primaryLanguage,
+
+        // -------- AI Analysis --------
+
+        summary: aiAnalysis.summary,
+
+        strengths: aiAnalysis.strengths,
+
+        weaknesses: aiAnalysis.weaknesses,
+
+        recommendations: aiAnalysis.recommendations,
+
+        architecture: aiAnalysis.architecture,
+
+        technologies: aiAnalysis.technologies,
+
+        documentationScore: aiAnalysis.scores.documentation,
+
+        codeQualityScore: aiAnalysis.scores.codeQuality,
+
+        overallScore: aiAnalysis.scores.overall,
+
+        score: aiAnalysis.scores.overall,
+    });
+
+    // ==================================================
+    // STEP 9: Return response
+    // ==================================================
+
+    return {
+        success: true,
+        message: "Repository analyzed successfully.",
+
+        analysis: {
+            repositoryId: repo.id,
+
+            // Metadata
+            languages,
+            topics: githubRepo.topics,
+            hasReadme,
+            hasLicense: !!githubRepo.license,
+            latestCommit,
+            homepage: githubRepo.homepage,
+            primaryLanguage,
+            stars: githubRepo.stargazers_count,
+            forksCount: githubRepo.forks_count,
+            watchersCount: githubRepo.watchers_count,
+            openIssues: githubRepo.open_issues_count,
+
+            // AI
+            summary: aiAnalysis.summary,
+            strengths: aiAnalysis.strengths,
+            weaknesses: aiAnalysis.weaknesses,
+            recommendations: aiAnalysis.recommendations,
+            architecture: aiAnalysis.architecture,
+            technologies: aiAnalysis.technologies,
+
+            // Scores
+            documentationScore: aiAnalysis.scores.documentation,
+            codeQualityScore: aiAnalysis.scores.codeQuality,
+            maintainabilityScore: aiAnalysis.scores.maintainability,
+            securityScore: aiAnalysis.scores.security,
+            overallScore: aiAnalysis.scores.overall,
+        },
+    };
+};
