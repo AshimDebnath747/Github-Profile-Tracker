@@ -195,3 +195,168 @@ export const getPublicPortfolioService = async (slug) => {
         },
     };
 };
+
+
+/* ===========================================================
+    GET MY PORTFOLIO
+=========================================================== */
+
+export const getPortfolioService = async (userId) => {
+    const portfolioResult = await sql`
+        SELECT *
+        FROM portfolios
+        WHERE user_id = ${userId}
+        LIMIT 1
+    `;
+
+    if (portfolioResult.length === 0) {
+        return null;
+    }
+
+    const portfolio = portfolioResult[0];
+
+    const featuredRepositories = await sql`
+        SELECT
+            r.id,
+            r.name,
+            r.description,
+            r.owner,
+            r.html_url,
+            pfr.display_order
+        FROM portfolio_featured_repositories pfr
+        JOIN repositories r
+            ON r.id = pfr.repository_id
+        WHERE pfr.portfolio_id = ${portfolio.id}
+        ORDER BY pfr.display_order
+    `;
+
+    return {
+        ...portfolio,
+        featuredRepositories,
+    };
+};
+
+/* ===========================================================
+    UPDATE PORTFOLIO
+=========================================================== */
+
+export const updatePortfolioService = async (userId, payload) => {
+    const {
+        displayName,
+        bio,
+        tagline,
+        theme,
+        socialLinks,
+        resumeUrl,
+        featuredRepositories = [],
+        displayEmail,
+        showGithubStats,
+    } = payload;
+
+    if (featuredRepositories.length > 6) {
+        throw new Error("Maximum 6 featured repositories allowed.");
+    }
+
+    return await sql.begin(async (tx) => {
+        let portfolio;
+
+        const existing = await tx`
+            SELECT *
+            FROM portfolios
+            WHERE user_id = ${userId}
+            LIMIT 1
+        `;
+
+        if (existing.length === 0) {
+            const inserted = await tx`
+                INSERT INTO portfolios (
+                    user_id,
+                    display_name,
+                    bio,
+                    tagline,
+                    theme,
+                    social_links,
+                    resume_url,
+                    display_email,
+                    show_github_stats
+                )
+                VALUES (
+                    ${userId},
+                    ${displayName},
+                    ${bio},
+                    ${tagline},
+                    ${theme},
+                    ${JSON.stringify(socialLinks || {})},
+                    ${resumeUrl},
+                    ${displayEmail},
+                    ${showGithubStats}
+                )
+                RETURNING *
+            `;
+
+            portfolio = inserted[0];
+        } else {
+            const updated = await tx`
+                UPDATE portfolios
+                SET
+                    display_name = ${displayName},
+                    bio = ${bio},
+                    tagline = ${tagline},
+                    theme = ${theme},
+                    social_links = ${JSON.stringify(socialLinks || {})},
+                    resume_url = ${resumeUrl},
+                    display_email = ${displayEmail},
+                    show_github_stats = ${showGithubStats},
+                    updated_at = NOW()
+                WHERE user_id = ${userId}
+                RETURNING *
+            `;
+
+            portfolio = updated[0];
+        }
+
+        // ----------------------------
+        // Update featured repositories
+        // ----------------------------
+
+        await tx`
+            DELETE FROM portfolio_featured_repositories
+            WHERE portfolio_id = ${portfolio.id}
+        `;
+
+        for (let i = 0; i < featuredRepositories.length; i++) {
+            await tx`
+                INSERT INTO portfolio_featured_repositories (
+                    portfolio_id,
+                    repository_id,
+                    display_order
+                )
+                VALUES (
+                    ${portfolio.id},
+                    ${featuredRepositories[i]},
+                    ${i + 1}
+                )
+            `;
+        }
+
+        const repos = await tx`
+            SELECT
+                r.id,
+                r.name,
+                r.description,
+                r.owner,
+                r.html_url,
+                pfr.display_order
+            FROM portfolio_featured_repositories pfr
+            JOIN repositories r
+                ON r.id = pfr.repository_id
+            WHERE pfr.portfolio_id = ${portfolio.id}
+            ORDER BY pfr.display_order
+        `;
+
+        return {
+            ...portfolio,
+            featuredRepositories: repos,
+        };
+    });
+};
