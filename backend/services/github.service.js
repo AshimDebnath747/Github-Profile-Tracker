@@ -5,10 +5,7 @@ import { analyzeRepositoryWithAI } from "./ai.service.js";
 import { saveRepositoryAnalysis } from "./analysis.service.js"
 
 export const syncRepositoriesService = async (userId) => {
-    /*
-        STEP 1
-        Get GitHub access token
-    */
+    // STEP 1 - Get GitHub access token
     const tokenResult = await sql`
         SELECT access_token
         FROM oauth_tokens
@@ -17,19 +14,13 @@ export const syncRepositoriesService = async (userId) => {
         LIMIT 1
     `;
 
-
-
-    console.log(tokenResult)
     if (tokenResult.length === 0) {
         throw new Error("GitHub account is not connected.");
     }
 
     const accessToken = tokenResult[0].access_token;
-    console.log(accessToken)
-    /*
-        STEP 2
-        Fetch repositories from GitHub
-    */
+
+    // STEP 2 - Fetch repositories
     const response = await axios.get(
         "https://api.github.com/user/repos",
         {
@@ -46,10 +37,7 @@ export const syncRepositoriesService = async (userId) => {
 
     const repos = response.data;
 
-    /*
-        STEP 3
-        Insert / Update repositories
-    */
+    // STEP 3 - Insert / Update repositories
     for (const repo of repos) {
         const existingRepo = await sql`
             SELECT id
@@ -69,6 +57,9 @@ export const syncRepositoriesService = async (userId) => {
                     html_url = ${repo.html_url},
                     private = ${repo.private},
                     fork = ${repo.fork},
+                    github_created_at = ${repo.created_at},
+                    github_updated_at = ${repo.updated_at},
+                    github_pushed_at = ${repo.pushed_at},
                     updated_at = NOW()
                 WHERE github_repo_id = ${repo.id}
             `;
@@ -83,7 +74,10 @@ export const syncRepositoriesService = async (userId) => {
                     default_branch,
                     html_url,
                     private,
-                    fork
+                    fork,
+                    github_created_at,
+                    github_updated_at,
+                    github_pushed_at
                 )
                 VALUES (
                     ${userId},
@@ -94,16 +88,15 @@ export const syncRepositoriesService = async (userId) => {
                     ${repo.default_branch},
                     ${repo.html_url},
                     ${repo.private},
-                    ${repo.fork}
+                    ${repo.fork},
+                    ${repo.created_at},
+                    ${repo.updated_at},
+                    ${repo.pushed_at}
                 )
             `;
         }
     }
 
-    /*
-        STEP 4
-        Return response
-    */
     return {
         success: true,
         message: "Repositories synced successfully.",

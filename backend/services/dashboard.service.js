@@ -224,3 +224,66 @@ const saveDeveloperAnalysis = async (userId, analysis) => {
             updated_at = NOW();
     `;
 };
+
+// services/dashboard.service.js
+
+export const getSkillTimelineService = async (userId) => {
+    const repositories = await sql`
+        SELECT
+            r.github_created_at,
+            ra.languages,
+            ra.technologies
+        FROM repositories r
+        JOIN repository_analysis ra
+            ON r.id = ra.repository_id
+        WHERE r.user_id = ${userId}
+        ORDER BY r.github_created_at ASC;
+    `;
+
+    const timeline = {};
+
+    for (const repo of repositories) {
+        if (!repo.github_created_at) continue;
+
+        const year = new Date(repo.github_created_at).getFullYear();
+
+        if (!timeline[year]) {
+            timeline[year] = {
+                languages: new Set(),
+                technologies: new Set(),
+            };
+        }
+
+        // Languages
+        const languages =
+            typeof repo.languages === "string"
+                ? JSON.parse(repo.languages)
+                : repo.languages;
+
+        if (languages) {
+            Object.keys(languages).forEach((language) => {
+                timeline[year].languages.add(language);
+            });
+        }
+
+        // Technologies
+        const technologies =
+            typeof repo.technologies === "string"
+                ? JSON.parse(repo.technologies)
+                : repo.technologies;
+
+        if (Array.isArray(technologies)) {
+            technologies.forEach((tech) => {
+                timeline[year].technologies.add(tech);
+            });
+        }
+    }
+
+    return Object.entries(timeline)
+        .map(([year, data]) => ({
+            year: Number(year),
+            languages: [...data.languages].sort(),
+            technologies: [...data.technologies].sort(),
+        }))
+        .sort((a, b) => a.year - b.year);
+};
