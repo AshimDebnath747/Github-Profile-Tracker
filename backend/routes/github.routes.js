@@ -3,7 +3,8 @@ import {
     syncRepositories,
     getRepositories,
     toggleRepository,
-    analyzeRepository
+    analyzeRepository,
+    getRepositoryHealth
 } from "../controllers/github.controller.js";
 
 import { authenticate } from "../middlewares/auth.middleware.js";
@@ -14,5 +15,10 @@ router.post("/repos/sync", authenticate, syncRepositories);
 router.get("/repos", authenticate, getRepositories);
 router.post("/repos/:id/toggle", authenticate, toggleRepository);
 router.post("/repos/:id/analyze", authenticate, analyzeRepository);
+router.get(
+    "/repos/:id/health",
+    authenticate,
+    getRepositoryHealth
+);
 
 export default router;

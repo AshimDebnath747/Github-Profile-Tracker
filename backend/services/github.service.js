@@ -171,6 +171,8 @@ export const analyzeRepositoryService = async (userId, repoId) => {
     // ==================================================
     // STEP 1: Get repository + GitHub access token
     // ==================================================s
+    console.log(process.env.DATABASE_URL);
+    console.log(new URL(process.env.DATABASE_URL).hostname);
     const repositories = await sql`
         SELECT r.*, o.access_token
         FROM repositories r
@@ -328,14 +330,13 @@ export const analyzeRepositoryService = async (userId, repoId) => {
     // ==================================================
 
     await saveRepositoryAnalysis(repo.id, {
-        // -------- Existing metadata --------
-
+        // -------- Repository Metadata --------
         languages,
+        primaryLanguage,
         topics: githubRepo.topics,
 
         hasReadme,
         hasLicense: !!githubRepo.license,
-
         latestCommit,
 
         homepage: githubRepo.homepage,
@@ -345,28 +346,27 @@ export const analyzeRepositoryService = async (userId, repoId) => {
         watchersCount: githubRepo.watchers_count,
         openIssues: githubRepo.open_issues_count,
 
-        primaryLanguage,
-
         // -------- AI Analysis --------
-
         summary: aiAnalysis.summary,
 
         strengths: aiAnalysis.strengths,
-
         weaknesses: aiAnalysis.weaknesses,
-
         recommendations: aiAnalysis.recommendations,
 
         architecture: aiAnalysis.architecture,
-
         technologies: aiAnalysis.technologies,
 
+        // -------- Health Scores --------
+        architectureScore: aiAnalysis.scores.architecture,
         documentationScore: aiAnalysis.scores.documentation,
-
         codeQualityScore: aiAnalysis.scores.codeQuality,
-
+        maintainabilityScore: aiAnalysis.scores.maintainability,
+        securityScore: aiAnalysis.scores.security,
+        testingScore: aiAnalysis.scores.testing,
+        deploymentScore: aiAnalysis.scores.deployment,
         overallScore: aiAnalysis.scores.overall,
 
+        // Backward compatibility (if still used elsewhere)
         score: aiAnalysis.scores.overall,
     });
 
@@ -381,33 +381,93 @@ export const analyzeRepositoryService = async (userId, repoId) => {
         analysis: {
             repositoryId: repo.id,
 
-            // Metadata
+            // -------- Repository Metadata --------
             languages,
+            primaryLanguage,
             topics: githubRepo.topics,
+
             hasReadme,
             hasLicense: !!githubRepo.license,
             latestCommit,
+
             homepage: githubRepo.homepage,
-            primaryLanguage,
+
             stars: githubRepo.stargazers_count,
             forksCount: githubRepo.forks_count,
             watchersCount: githubRepo.watchers_count,
             openIssues: githubRepo.open_issues_count,
 
-            // AI
+            // -------- AI Analysis --------
             summary: aiAnalysis.summary,
             strengths: aiAnalysis.strengths,
             weaknesses: aiAnalysis.weaknesses,
             recommendations: aiAnalysis.recommendations,
+
             architecture: aiAnalysis.architecture,
             technologies: aiAnalysis.technologies,
 
-            // Scores
-            documentationScore: aiAnalysis.scores.documentation,
-            codeQualityScore: aiAnalysis.scores.codeQuality,
-            maintainabilityScore: aiAnalysis.scores.maintainability,
-            securityScore: aiAnalysis.scores.security,
-            overallScore: aiAnalysis.scores.overall,
+            // -------- Health Scores --------
+            scores: {
+                architecture: aiAnalysis.scores.architecture,
+                documentation: aiAnalysis.scores.documentation,
+                codeQuality: aiAnalysis.scores.codeQuality,
+                maintainability: aiAnalysis.scores.maintainability,
+                security: aiAnalysis.scores.security,
+                testing: aiAnalysis.scores.testing,
+                deployment: aiAnalysis.scores.deployment,
+                overall: aiAnalysis.scores.overall,
+            },
+        },
+    };
+};
+
+export const getRepositoryHealthService = async (
+    userId,
+    repositoryId
+) => {
+    const result = await sql`
+        SELECT
+            r.id,
+            r.name,
+
+            ra.overall_score,
+            ra.architecture_score,
+            ra.documentation_score,
+            ra.security_score,
+            ra.testing_score,
+            ra.maintainability_score,
+            ra.deployment_score
+
+        FROM repositories r
+        JOIN repository_analysis ra
+            ON r.id = ra.repository_id
+
+        WHERE
+            r.id = ${repositoryId}
+            AND r.user_id = ${userId}
+
+        LIMIT 1
+    `;
+
+    if (!result.length) {
+        throw new Error("Repository not found.");
+    }
+
+    const repo = result[0];
+
+    return {
+        repository: {
+            id: repo.id,
+            name: repo.name,
+        },
+        health: {
+            overall: repo.overall_score,
+            architecture: repo.architecture_score,
+            documentation: repo.documentation_score,
+            security: repo.security_score,
+            testing: repo.testing_score,
+            maintainability: repo.maintainability_score,
+            deployment: repo.deployment_score,
         },
     };
 };

@@ -2,7 +2,8 @@ import {
     syncRepositoriesService,
     getRepositoriesService,
     toggleRepositoryService,
-    analyzeRepositoryService
+    analyzeRepositoryService,
+    getRepositoryHealthService
 } from "../services/github.service.js";
 
 export const syncRepositories = async (req, res, next) => {
@@ -55,5 +56,24 @@ export const analyzeRepository = async (req, res, next) => {
         return res.status(200).json(result);
     } catch (error) {
         next(error);
+    }
+};
+
+export const getRepositoryHealth = async (req, res) => {
+    try {
+        const data = await getRepositoryHealthService(
+            req.user.id,
+            req.params.id
+        );
+
+        res.json({
+            success: true,
+            ...data,
+        });
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            message: err.message,
+        });
     }
 };

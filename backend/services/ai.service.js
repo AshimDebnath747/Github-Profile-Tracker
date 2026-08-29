@@ -26,25 +26,37 @@ Evaluate:
 Return ONLY valid JSON.
 
 {
-    "summary": "",
-    "strengths": [],
-    "weaknesses": [],
-    "recommendations": [],
-    "architecture": {
-        "pattern": "",
-        "frontend": "",
-        "backend": "",
-        "database": ""
-    },
-    "technologies": [],
-    "scores": {
-        "documentation": 0,
-        "codeQuality": 0,
-        "maintainability": 0,
-        "security": 0,
-        "overall": 0
-    }
+  "summary": "",
+  "strengths": [],
+  "weaknesses": [],
+  "recommendations": [],
+  "architecture": {
+    "pattern": "",
+    "frontend": "",
+    "backend": "",
+    "database": ""
+  },
+  "languages": {},
+  "technologies": [],
+  "scores": {
+    "architecture": 0,
+    "documentation": 0,
+    "codeQuality": 0,
+    "maintainability": 0,
+    "security": 0,
+    "testing": 0,
+    "deployment": 0,
+    "overall": 0
+  }
 }
+
+Give every score between 0 and 100.
+
+Base the score on actual evidence found in the repository.
+
+Never guess.
+
+If there is insufficient evidence for a category, assign a neutral score (50) and explain why in the recommendations. Do not invent facts.
 `;
 
     const { data } = await axios.post(

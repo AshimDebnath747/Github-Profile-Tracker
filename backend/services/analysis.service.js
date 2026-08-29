@@ -20,8 +20,13 @@ export const saveRepositoryAnalysis = async (repositoryId, analysis) => {
             open_issues,
             primary_language,
 
+            architecture_score,
             documentation_score,
             code_quality_score,
+            maintainability_score,
+            security_score,
+            testing_score,
+            deployment_score,
             overall_score,
             score,
 
@@ -50,8 +55,13 @@ export const saveRepositoryAnalysis = async (repositoryId, analysis) => {
             ${analysis.openIssues},
             ${analysis.primaryLanguage},
 
+            ${analysis.architectureScore},
             ${analysis.documentationScore},
             ${analysis.codeQualityScore},
+            ${analysis.maintainabilityScore},
+            ${analysis.securityScore},
+            ${analysis.testingScore},
+            ${analysis.deploymentScore},
             ${analysis.overallScore},
             ${analysis.score},
 
@@ -68,7 +78,6 @@ export const saveRepositoryAnalysis = async (repositoryId, analysis) => {
         ON CONFLICT (repository_id)
 
         DO UPDATE SET
-
             languages = EXCLUDED.languages,
             topics = EXCLUDED.topics,
             has_readme = EXCLUDED.has_readme,
@@ -82,8 +91,13 @@ export const saveRepositoryAnalysis = async (repositoryId, analysis) => {
             open_issues = EXCLUDED.open_issues,
             primary_language = EXCLUDED.primary_language,
 
+            architecture_score = EXCLUDED.architecture_score,
             documentation_score = EXCLUDED.documentation_score,
             code_quality_score = EXCLUDED.code_quality_score,
+            maintainability_score = EXCLUDED.maintainability_score,
+            security_score = EXCLUDED.security_score,
+            testing_score = EXCLUDED.testing_score,
+            deployment_score = EXCLUDED.deployment_score,
             overall_score = EXCLUDED.overall_score,
             score = EXCLUDED.score,
 
