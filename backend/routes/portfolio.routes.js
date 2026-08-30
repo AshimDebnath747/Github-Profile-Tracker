@@ -3,7 +3,9 @@ import {
     generatePortfolio,
     getPublicPortfolio,
     getPortfolio,
-    updatePortfolio
+    updatePortfolio,
+    roastPortfolio
+
 } from "../controllers/portfolio.controller.js";
 
 import { authenticate } from "../middlewares/auth.middleware.js";
@@ -24,5 +26,7 @@ router.get(
     authenticate,
     getPortfolio
 );
+
+router.post("/roast", authenticate, roastPortfolio)
 
 export default router;

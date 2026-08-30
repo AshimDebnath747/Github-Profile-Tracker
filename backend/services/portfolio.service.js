@@ -1,5 +1,5 @@
 import { sql } from "../config/db.js";
-
+import { roastPortfolioWithAI } from "./ai.service.js";
 export const generatePortfolioService = async (userId) => {
 
     /*
@@ -359,4 +359,35 @@ export const updatePortfolioService = async (userId, payload) => {
             featuredRepositories: repos,
         };
     });
+};
+
+
+export const roastPortfolioService = async (userId) => {
+    const repositories = await sql`
+        SELECT
+            r.name,
+            r.description,
+            ra.summary,
+            ra.strengths,
+            ra.weaknesses,
+            ra.documentation_score,
+            ra.code_quality_score,
+            ra.maintainability_score,
+            ra.security_score,
+            ra.testing_score,
+            ra.deployment_score,
+            ra.overall_score,
+            ra.technologies
+        FROM repositories r
+        JOIN repository_analysis ra
+            ON r.id = ra.repository_id
+        WHERE r.user_id = ${userId};
+    `;
+
+    if (!repositories.length) {
+        throw new Error("No analyzed repositories found.");
+    }
+    console.log(repositories.length)
+
+    return await roastPortfolioWithAI(repositories);
 };

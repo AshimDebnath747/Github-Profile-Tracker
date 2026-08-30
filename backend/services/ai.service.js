@@ -196,3 +196,85 @@ Guidelines:
         throw new Error("AI returned malformed JSON.");
     }
 };
+
+
+export const roastPortfolioWithAI = async (repositories, mode = "reddit") => {
+    const prompt = `
+You are an experienced software engineer and comedian.
+
+Your task is to roast a developer's GitHub portfolio.
+
+Roast Style: ${mode}
+
+Rules:
+- Be funny and witty.
+- Base every roast on actual evidence.
+- Never invent problems.
+- Mix praise with criticism.
+- Roast the code, not the person.
+- Mention good repositories if they exist.
+- End with one motivating sentence.
+- Keep the roast between 200 and 350 words.
+- roast all the repositories provided equally
+
+Repository Analysis:
+${JSON.stringify(repositories, null, 2)}
+
+Return ONLY valid JSON.
+
+{
+    "rating": 0,
+    "severity": "light",
+    "title": "",
+    "roast": "",
+    "highlights": [],
+    "recommendations": [],
+    "funniestMoment": "",
+    "closingRemark": ""
+}
+
+Guidelines:
+- rating: integer between 1 and 10.
+- severity: one of "light", "medium", "brutal".
+- title: a funny headline.
+- highlights: maximum 5.
+- recommendations: maximum 5.
+`;
+
+    const { data } = await axios.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+            model: process.env.OPENROUTER_MODEL,
+            temperature: 0.8,
+            response_format: {
+                type: "json_object",
+            },
+            messages: [
+                {
+                    role: "system",
+                    content:
+                        "You are a senior software engineer who writes hilarious but constructive portfolio reviews. Return only valid JSON.",
+                },
+                {
+                    role: "user",
+                    content: prompt,
+                },
+            ],
+        },
+        {
+            headers: {
+                Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                "Content-Type": "application/json",
+                "HTTP-Referer": process.env.APP_URL,
+                "X-Title": "GitHub Portfolio Analyzer",
+            },
+        }
+    );
+
+    try {
+        return JSON.parse(data.choices[0].message.content);
+    } catch (err) {
+        console.error("Invalid AI response:", data.choices[0].message.content);
+        throw new Error("AI returned invalid JSON.");
+    }
+};

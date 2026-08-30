@@ -1,4 +1,4 @@
-import { generatePortfolioService, getPublicPortfolioService, updatePortfolioService, getPortfolioService } from "../services/portfolio.service.js";
+import { generatePortfolioService, getPublicPortfolioService, updatePortfolioService, getPortfolioService, roastPortfolioService } from "../services/portfolio.service.js";
 
 export const generatePortfolio = async (req, res, next) => {
     try {
@@ -54,6 +54,22 @@ export const getPortfolio = async (req, res) => {
         res.status(500).json({
             success: false,
             message: err.message,
+        });
+    }
+};
+
+export const roastPortfolio = async (req, res) => {
+    try {
+        const result = await roastPortfolioService(req.user.id);
+
+        res.status(200).json({
+            success: true,
+            ...result,
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
         });
     }
 };
