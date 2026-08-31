@@ -1,7 +1,7 @@
 // services/dashboard.service.js
 
 import { sql } from "../config/db.js";
-import { analyzeDeveloperWithAI } from "./ai.service.js";
+import { analyzeDeveloperWithAI, analyzeDeveloperDNAWithAI } from "./ai.service.js";
 
 /* ===========================================================
     MAIN SERVICE
@@ -286,4 +286,36 @@ export const getSkillTimelineService = async (userId) => {
             technologies: [...data.technologies].sort(),
         }))
         .sort((a, b) => a.year - b.year);
+};
+
+
+export const getDeveloperDNAService = async (userId) => {
+    const repositories = await sql`
+        SELECT
+            r.name,
+            r.description,
+            ra.summary,
+            ra.languages,
+            ra.technologies,
+            ra.architecture,
+            ra.strengths,
+            ra.weaknesses,
+            ra.documentation_score,
+            ra.code_quality_score,
+            ra.maintainability_score,
+            ra.security_score,
+            ra.testing_score,
+            ra.deployment_score,
+            ra.overall_score
+        FROM repositories r
+        JOIN repository_analysis ra
+            ON r.id = ra.repository_id
+        WHERE r.user_id = ${userId};
+    `;
+
+    if (!repositories.length) {
+        throw new Error("No analyzed repositories found.");
+    }
+
+    return await analyzeDeveloperDNAWithAI(repositories);
 };

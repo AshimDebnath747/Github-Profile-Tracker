@@ -278,3 +278,75 @@ Guidelines:
         throw new Error("AI returned invalid JSON.");
     }
 };
+
+
+export const analyzeDeveloperDNAWithAI = async (repositories) => {
+    const prompt = `
+You are a senior software architect and technical recruiter.
+
+Analyze the developer's repositories and determine their Developer DNA.
+
+Only use evidence present in the repository analysis.
+Never invent information.
+
+Repository Analysis:
+
+${JSON.stringify(repositories, null, 2)}
+
+Return ONLY valid JSON.
+
+{
+  "title": "",
+  "description": "",
+  "traits": [],
+  "strengths": [],
+  "weaknesses": [],
+  "favoriteTechnologies": [],
+  "codingStyle": "",
+  "careerLevel": "",
+  "idealRoles": [],
+  "confidence": 0
+}
+
+Rules:
+- confidence must be between 0 and 100.
+- traits: maximum 6.
+- strengths: maximum 5.
+- weaknesses: maximum 5.
+- favoriteTechnologies: maximum 8.
+- idealRoles: maximum 5.
+- Base every conclusion on repository evidence.
+`;
+
+    const { data } = await axios.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+            model: process.env.OPENROUTER_MODEL,
+            temperature: 0.4,
+            response_format: {
+                type: "json_object",
+            },
+            messages: [
+                {
+                    role: "system",
+                    content:
+                        "You are an expert software architect. Return only valid JSON.",
+                },
+                {
+                    role: "user",
+                    content: prompt,
+                },
+            ],
+        },
+        {
+            headers: {
+                Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                "Content-Type": "application/json",
+                "HTTP-Referer": process.env.APP_URL,
+                "X-Title": "GitHub Portfolio Analyzer",
+            },
+        }
+    );
+
+    return JSON.parse(data.choices[0].message.content);
+};

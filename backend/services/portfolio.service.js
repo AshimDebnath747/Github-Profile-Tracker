@@ -1,118 +1,163 @@
 import { sql } from "../config/db.js";
 import { roastPortfolioWithAI } from "./ai.service.js";
+
 export const generatePortfolioService = async (userId) => {
-
     /*
-        STEP 1
-        Get user
-    */
+     * STEP 1
+     * Get user
+     */
 
-    const users = await sql`
+    const [user] = await sql`
         SELECT *
         FROM users
         WHERE id = ${userId}
         LIMIT 1
     `;
 
-    if (users.length === 0) {
+    if (!user) {
         throw new Error("User not found.");
     }
 
-    const user = users[0];
+    /*
+     * STEP 2
+     * Create portfolio if it doesn't exist
+     */
+
+    const [portfolio] = await sql`
+        INSERT INTO portfolios (
+            user_id,
+            status
+        )
+        VALUES (
+            ${userId},
+            'pending'
+        )
+        ON CONFLICT (user_id)
+        DO UPDATE
+        SET updated_at = NOW()
+        RETURNING *;
+    `;
 
     /*
-        STEP 2
-        Get selected repositories
-    */
+     * STEP 3
+     * Get selected repositories
+     */
 
     const repositories = await sql`
-SELECT
-    r.id,
-    r.name,
-    r.owner,
-    r.description,
-    r.html_url,
-    r.default_branch,
-    r.private,
-    r.fork,
+        SELECT
+            r.id,
+            r.name,
+            r.owner,
+            r.description,
+            r.html_url,
+            r.private,
+            r.fork,
+            r.github_created_at,
 
-    a.score,
-    a.languages,
-    a.topics,
-    a.has_readme,
-    a.has_license,
-    a.stars,
-    a.forks,
-    a.watchers
+            ra.summary,
+            ra.languages,
+            ra.technologies,
+            ra.primary_language,
+            ra.overall_score,
+            ra.stars,
+            ra.forks_count,
+            ra.watchers_count
 
-FROM repositories r
+        FROM repositories r
 
-LEFT JOIN repository_analysis a
-ON r.id = a.repository_id
+        LEFT JOIN repository_analysis ra
+            ON r.id = ra.repository_id
 
-WHERE r.user_id = ${userId}
-AND r.included = true
+        WHERE
+            r.user_id = ${userId}
+            AND r.included = true
 
-ORDER BY
-    a.score DESC NULLS LAST,
-    r.updated_at DESC
-`;
+        ORDER BY
+            ra.overall_score DESC NULLS LAST,
+            r.github_created_at DESC;
+    `;
 
     /*
-        STEP 3
-        Calculate statistics
-    */
+     * STEP 4
+     * Statistics
+     */
 
     const stats = {
         totalRepositories: repositories.length,
         publicRepositories: repositories.filter(r => !r.private).length,
         privateRepositories: repositories.filter(r => r.private).length,
-        forkedRepositories: repositories.filter(r => r.fork).length
+        forkedRepositories: repositories.filter(r => r.fork).length,
+
+        totalStars: repositories.reduce(
+            (sum, repo) => sum + (repo.stars || 0),
+            0
+        ),
+
+        totalForks: repositories.reduce(
+            (sum, repo) => sum + (repo.forks_count || 0),
+            0
+        ),
+
+        averageScore:
+            repositories.length
+                ? Math.round(
+                    repositories.reduce(
+                        (sum, repo) =>
+                            sum + (repo.overall_score || 0),
+                        0
+                    ) / repositories.length
+                )
+                : 0
     };
 
     /*
-        STEP 4
-        Build portfolio object
-    */
+     * STEP 5
+     * Update portfolio metadata
+     */
 
-    const portfolio = {
-        user: {
-            id: user.id,
-            githubId: user.github_id,
-            username: user.github_username,
-            name: user.name,
-            email: user.email,
-            avatar: user.avatar_url,
-            bio: user.bio,
-            location: user.location,
-            linkedin: user.linkedin_url,
-            slug: user.portfolio_slug
-        },
-
-        stats,
-
-        repositories: repositories.map(repo => ({
-            id: repo.id,
-            githubRepoId: repo.github_repo_id,
-            name: repo.name,
-            owner: repo.owner,
-            description: repo.description,
-            htmlUrl: repo.html_url,
-            defaultBranch: repo.default_branch,
-            private: repo.private,
-            fork: repo.fork
-        }))
-    };
+    const [updatedPortfolio] = await sql`
+        UPDATE portfolios
+        SET
+            status = 'ready',
+            version = version + 1,
+            last_generated_at = NOW(),
+            updated_at = NOW()
+        WHERE id = ${portfolio.id}
+        RETURNING *;
+    `;
 
     /*
-        STEP 5
-        Return portfolio
-    */
+     * STEP 6
+     * Return
+     */
 
     return {
         success: true,
+
         portfolioUrl: `/portfolio/${user.portfolio_slug}`,
-        portfolio
+
+        portfolio: {
+            id: updatedPortfolio.id,
+            version: updatedPortfolio.version,
+            status: updatedPortfolio.status,
+            lastGeneratedAt: updatedPortfolio.last_generated_at,
+
+            profile: {
+                username: user.github_username,
+                name: updatedPortfolio.display_name || user.name,
+                avatar: user.avatar_url,
+                bio: updatedPortfolio.bio || user.bio,
+                tagline: updatedPortfolio.tagline,
+                theme: updatedPortfolio.theme,
+                socialLinks: updatedPortfolio.social_links,
+                resumeUrl: updatedPortfolio.resume_url,
+                displayEmail: updatedPortfolio.display_email
+            },
+
+            stats,
+
+            repositories
+        }
     };
 };
 

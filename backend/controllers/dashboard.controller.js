@@ -1,6 +1,6 @@
 // controllers/dashboard.controller.js
 
-import { getDashboardService, getSkillTimelineService } from "../services/dashboard.service.js";
+import { getDashboardService, getSkillTimelineService, getDeveloperDNAService } from "../services/dashboard.service.js";
 
 export const getDashboard = async (req, res) => {
     try {
@@ -32,6 +32,22 @@ export const getSkillTimeline = async (req, res) => {
         console.error(error);
 
         return res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+
+export const getDeveloperDNA = async (req, res) => {
+    try {
+        const result = await getDeveloperDNAService(req.user.id);
+
+        res.status(200).json({
+            success: true,
+            dna: result,
+        });
+    } catch (error) {
+        res.status(500).json({
             success: false,
             message: error.message,
         });
