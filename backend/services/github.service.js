@@ -3,6 +3,7 @@ import { sql } from "../config/db.js";
 import { buildRepositoryContext } from "./githubCollector.service.js";
 import { analyzeRepositoryWithAI } from "./ai.service.js";
 import { saveRepositoryAnalysis } from "./analysis.service.js"
+import pLimit from "p-limit";
 
 export const syncRepositoriesService = async (userId) => {
     // STEP 1 - Get GitHub access token
@@ -469,5 +470,54 @@ export const getRepositoryHealthService = async (
             maintainability: repo.maintainability_score,
             deployment: repo.deployment_score,
         },
+    };
+};
+
+export const analyzeAllRepositoriesService = async (userId) => {
+    const limit = pLimit(3);
+
+    const repositories = await sql`
+        SELECT id , github_repo_id, name
+        FROM repositories
+        WHERE user_id = ${userId};
+    `;
+
+    if (!repositories.length) {
+        throw new Error("No repositories found.");
+    }
+
+    const results = await Promise.all(
+        repositories.map(repo =>
+            limit(async () => {
+                try {
+                    const analysis = await analyzeRepositoryService(
+                        userId,
+                        repo.id
+                    );
+
+                    return {
+                        repository: repo.name,
+                        githubRepoId: repo.github_repo_id,
+                        success: true,
+                        analysis: analysis.analysis,
+                    };
+                } catch (error) {
+                    return {
+                        repository: repo.name,
+                        githubRepoId: repo.github_repo_id,
+                        success: false,
+                        error: error.message,
+                    };
+                }
+            })
+        )
+    );
+
+    return {
+        success: true,
+        totalRepositories: repositories.length,
+        successful: results.filter(r => r.success).length,
+        failed: results.filter(r => !r.success).length,
+        results,
     };
 };
