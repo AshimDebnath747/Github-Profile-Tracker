@@ -1,7 +1,7 @@
 import axios from "axios";
 import { sql } from "../config/db.js";
 import { buildRepositoryContext } from "./githubCollector.service.js";
-import { analyzeRepositoryWithAI } from "./ai.service.js";
+import { analyzeRepositoryWithAI, generateProjectStoryWithAI } from "./ai.service.js";
 import { saveRepositoryAnalysis } from "./analysis.service.js"
 import pLimit from "p-limit";
 
@@ -519,5 +519,95 @@ export const analyzeAllRepositoriesService = async (userId) => {
         successful: results.filter(r => r.success).length,
         failed: results.filter(r => !r.success).length,
         results,
+    };
+};
+
+export const generateProjectStoryService = async (
+    userId,
+    repositoryId
+) => {
+    /*
+     * STEP 1
+     * Fetch repository
+     */
+
+    const [repository] = await sql`
+        SELECT
+            r.id,
+            r.name,
+            r.owner,
+            r.description,
+            r.html_url,
+            r.default_branch,
+
+            ra.summary,
+            ra.architecture,
+            ra.languages,
+            ra.technologies,
+            ra.strengths,
+            ra.weaknesses,
+            ra.recommendations,
+            ra.project_story
+
+        FROM repositories r
+
+        JOIN repository_analysis ra
+            ON r.id = ra.repository_id
+
+        WHERE
+            r.id = ${repositoryId}
+            AND r.user_id = ${userId}
+
+        LIMIT 1;
+    `;
+
+    if (!repository) {
+        throw new Error("Repository not found.");
+    }
+
+    /*
+     * STEP 2
+     * Return cached story if available
+     */
+
+    if (repository.project_story) {
+        return {
+            success: true,
+            cached: true,
+            repository: repository.name,
+            story: repository.project_story,
+        };
+    }
+
+    /*
+     * STEP 3
+     * Generate story
+     */
+
+    const story = await generateProjectStoryWithAI(repository);
+
+    /*
+     * STEP 4
+     * Save story
+     */
+
+    await sql`
+        UPDATE repository_analysis
+        SET
+            project_story = ${JSON.stringify(story)},
+            updated_at = NOW()
+        WHERE repository_id = ${repositoryId};
+    `;
+
+    /*
+     * STEP 5
+     * Return
+     */
+
+    return {
+        success: true,
+        cached: false,
+        repository: repository.name,
+        story,
     };
 };

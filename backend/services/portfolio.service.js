@@ -1,5 +1,5 @@
 import { sql } from "../config/db.js";
-import { roastPortfolioWithAI } from "./ai.service.js";
+import { roastPortfolioWithAI, askPortfolioAI } from "./ai.service.js";
 
 export const generatePortfolioService = async (userId) => {
     /*
@@ -435,4 +435,69 @@ export const roastPortfolioService = async (userId) => {
     console.log(repositories.length)
 
     return await roastPortfolioWithAI(repositories);
+};
+
+export const chatPortfolioService = async (userId, question) => {
+
+    // user
+
+    const users = await sql`
+        SELECT
+            id,
+            name,
+            github_username,
+            bio,
+            location
+        FROM users
+        WHERE id = ${userId}
+        LIMIT 1
+    `;
+
+    if (!users.length) {
+        throw new Error("User not found.");
+    }
+
+    const user = users[0];
+
+    // repositories
+
+    const repos = await sql`
+        SELECT
+            r.name,
+            r.description,
+            r.html_url,
+
+            a.summary,
+            a.architecture,
+            a.languages,
+            a.technologies,
+            a.strengths,
+            a.weaknesses,
+            a.recommendations,
+            a.score,
+            a.project_story
+
+        FROM repositories r
+
+        LEFT JOIN repository_analysis a
+        ON r.id = a.repository_id
+
+        WHERE r.user_id = ${userId}
+        ORDER BY a.score DESC NULLS LAST
+    `;
+
+    const context = {
+        user,
+        repositories: repos
+    };
+
+    const answer = await askPortfolioAI(
+        context,
+        question
+    );
+
+    return {
+        success: true,
+        answer
+    };
 };

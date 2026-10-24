@@ -4,7 +4,8 @@ import {
     toggleRepositoryService,
     analyzeRepositoryService,
     getRepositoryHealthService,
-    analyzeAllRepositoriesService
+    analyzeAllRepositoriesService,
+    generateProjectStoryService
 } from "../services/github.service.js";
 
 export const syncRepositories = async (req, res, next) => {
@@ -89,6 +90,26 @@ export const analyzeAllRepositories = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+
+export const generateProjectStory = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const result = await generateProjectStoryService(
+            req.user.id,
+            id
+        );
+
+        return res.status(200).json(result);
+    } catch (error) {
+        console.error(error);
+
+        return res.status(500).json({
             success: false,
             message: error.message,
         });

@@ -350,3 +350,113 @@ Rules:
 
     return JSON.parse(data.choices[0].message.content);
 };
+
+
+export const generateProjectStoryWithAI = async (repository) => {
+    const prompt = `
+You are a senior software engineer and technical writer.
+
+Generate a compelling story for this GitHub project.
+
+Repository:
+
+${JSON.stringify(repository)}
+
+Return ONLY valid JSON.
+
+{
+  "title": "",
+  "problem": "",
+  "goal": "",
+  "approach": "",
+  "technicalHighlights": [],
+  "challenges": [],
+  "keyLearnings": [],
+  "impact": "",
+  "futureImprovements": []
+}
+
+Rules:
+- Base the story only on the provided repository data.
+- Do not invent features that are not evident.
+- Keep the tone professional and suitable for recruiters.
+`;
+
+    const { data } = await axios.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+            model: process.env.OPENROUTER_MODEL,
+            temperature: 0.4,
+            response_format: {
+                type: "json_object",
+            },
+            messages: [
+                {
+                    role: "system",
+                    content:
+                        "You are an expert software engineer. Return valid JSON only.",
+                },
+                {
+                    role: "user",
+                    content: prompt,
+                },
+            ],
+        },
+        {
+            headers: {
+                Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                "Content-Type": "application/json",
+                "HTTP-Referer": process.env.APP_URL,
+                "X-Title": "GitHub Portfolio Analyzer",
+            },
+        }
+    );
+
+    return JSON.parse(data.choices[0].message.content);
+};
+
+export const askPortfolioAI = async (portfolio, question) => {
+
+    const prompt = `
+You are an AI assistant for a developer's GitHub portfolio.
+
+Answer ONLY using the information provided.
+
+If the answer cannot be determined from the portfolio, say:
+"I couldn't find that information in the portfolio."
+
+Portfolio:
+
+${JSON.stringify(portfolio)}
+
+Question:
+${question}
+`;
+
+    const { data } = await axios.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+            model: process.env.OPENROUTER_MODEL,
+            temperature: 0.2,
+            messages: [
+                {
+                    role: "system",
+                    content:
+                        "You are an expert software engineering assistant."
+                },
+                {
+                    role: "user",
+                    content: prompt
+                }
+            ]
+        },
+        {
+            headers: {
+                Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                "Content-Type": "application/json"
+            }
+        }
+    );
+
+    return data.choices[0].message.content;
+};

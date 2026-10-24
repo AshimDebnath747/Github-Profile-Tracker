@@ -4,7 +4,8 @@ import {
     getPublicPortfolio,
     getPortfolio,
     updatePortfolio,
-    roastPortfolio
+    roastPortfolio,
+    chatPortfolio
 } from "../controllers/portfolio.controller.js";
 
 import { authenticate } from "../middlewares/auth.middleware.js";
@@ -12,6 +13,7 @@ import { authenticate } from "../middlewares/auth.middleware.js";
 const router = express.Router();
 
 router.post("/generate", authenticate, generatePortfolio);
+router.post("/chat", authenticate, chatPortfolio);
 router.get("/roast", authenticate, roastPortfolio)
 router.patch(
     "/",
