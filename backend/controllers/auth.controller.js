@@ -20,15 +20,18 @@ export const githubCallback = async (req, res, next) => {
         const { code } = req.query;
 
         const result = await githubCallbackService(code);
+
         res.cookie("token", result.token, {
             httpOnly: true,
-            secure: false,
-            sameSite: "lax",
+            secure: true,
+            sameSite: "none",
             maxAge: 7 * 24 * 60 * 60 * 1000,
+            path: "/",
         });
 
-        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-        return res.redirect(303, frontendUrl);
+        const frontendUrl = process.env.FRONTEND_URL;
+
+        return res.redirect(303, `${frontendUrl}/dashboard`);
     } catch (error) {
         next(error);
     }
@@ -49,9 +52,12 @@ export const getCurrentUser = async (req, res, next) => {
 
 export const logout = async (req, res, next) => {
     try {
-        await logoutService();
-
-        res.clearCookie("token");
+        res.clearCookie("token", {
+            httpOnly: true,
+            secure: true,
+            sameSite: "none",
+            path: "/",
+        });
 
         return res.json({
             success: true,
