@@ -5,8 +5,6 @@ export const authenticate = (req, res, next) => {
         // Get token from cookie
         const token = req.cookies.token;
 
-        console.log("token is cookie:", token)
-
         if (!token) {
             return res.status(401).json({
                 success: false,

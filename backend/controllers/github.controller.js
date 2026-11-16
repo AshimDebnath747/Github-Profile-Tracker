@@ -61,6 +61,15 @@ export const analyzeRepository = async (req, res, next) => {
     }
 };
 
+export const roastRepository = async (req, res, next) => {
+    try {
+        const result = await roastRepositoryService(req.user.id, req.params.id);
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getRepositoryHealth = async (req, res) => {
     try {
         const data = await getRepositoryHealthService(

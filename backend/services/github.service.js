@@ -1,8 +1,64 @@
 import axios from "axios";
 import { sql } from "../config/db.js";
 import { buildRepositoryContext } from "./githubCollector.service.js";
-import { analyzeRepositoryWithAI, generateProjectStoryWithAI } from "./ai.service.js";
+import { analyzeRepositoryWithAI } from "./ai.service.js";
+import { roastPortfolioWithAI } from "./ai.service.js";
 import { saveRepositoryAnalysis } from "./analysis.service.js"
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const locateEvidenceQuote = (content, quote) => {
+    const words = quote.trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return null;
+    const pattern = words.map(escapeRegExp).join("\\s+");
+    const match = new RegExp(pattern).exec(content);
+    if (!match) return null;
+    const start = match.index;
+    const end = start + match[0].length;
+    return {
+        lineStart: content.slice(0, start).split("\n").length,
+        lineEnd: content.slice(0, end).split("\n").length,
+    };
+};
+
+const validateAnalysisEvidence = (aiAnalysis, context, repo) => {
+    const files = new Map(
+        [...(context.importantFiles || []), ...(context.sourceFiles || [])]
+            .filter(file => typeof file?.path === "string" && typeof file?.content === "string")
+            .map(file => [file.path, file.content])
+    );
+    const findings = {
+        strengths: Array.isArray(aiAnalysis.strengths) ? aiAnalysis.strengths : [],
+        weaknesses: Array.isArray(aiAnalysis.weaknesses) ? aiAnalysis.weaknesses : [],
+        recommendations: Array.isArray(aiAnalysis.recommendations) ? aiAnalysis.recommendations : [],
+    };
+    const verified = [];
+    for (const item of Array.isArray(aiAnalysis.evidence) ? aiAnalysis.evidence : []) {
+        if (!item || !Object.hasOwn(findings, item.category) || !Number.isInteger(item.findingIndex)) continue;
+        const finding = findings[item.category][item.findingIndex];
+        const content = files.get(item.sourcePath);
+        const quote = typeof item.quote === "string" ? item.quote.trim() : "";
+        if (typeof finding !== "string" || !content || quote.length < 20 || quote.length > 240) continue;
+        const location = locateEvidenceQuote(content, quote);
+        if (!location) continue;
+        const sourcePath = item.sourcePath.split("/").map(encodeURIComponent).join("/");
+        const branch = encodeURIComponent(repo.default_branch || "main");
+        const url = `https://github.com/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/blob/${branch}/${sourcePath}?plain=1#L${location.lineStart}`;
+        verified.push({ category: item.category, findingIndex: item.findingIndex, item: finding, filePath: item.sourcePath, quote, ...location, url });
+    }
+
+    const retained = { strengths: [], weaknesses: [], recommendations: [] };
+    const normalizedEvidence = [];
+    for (const category of Object.keys(findings)) {
+        findings[category].forEach((finding, findingIndex) => {
+            const matches = verified.filter(item => item.category === category && item.findingIndex === findingIndex);
+            if (!matches.length) return;
+            const newIndex = retained[category].push(finding) - 1;
+            normalizedEvidence.push(...matches.map(item => ({ ...item, findingIndex: newIndex })));
+        });
+    }
+    return { findings: retained, evidence: normalizedEvidence };
+};
 import pLimit from "p-limit";
 
 export const syncRepositoriesService = async (userId) => {
@@ -109,28 +165,100 @@ export const getRepositoriesService = async (userId) => {
 
     const repositories = await sql`
         SELECT
-            id,
-            github_repo_id,
-            name,
-            owner,
-            description,
-            default_branch,
-            html_url,
-            private,
-            fork,
-            included,
-            created_at,
-            updated_at
-        FROM repositories
-        WHERE user_id = ${userId}
-        ORDER BY updated_at DESC
+            r.id,
+            r.github_repo_id,
+            r.name,
+            r.owner,
+            r.description,
+            r.default_branch,
+            r.html_url,
+            r.private,
+            r.fork,
+            r.included,
+            r.created_at,
+            r.updated_at,
+            ra.summary AS analysis_summary,
+            ra.strengths AS analysis_strengths,
+            ra.weaknesses AS analysis_weaknesses,
+            ra.recommendations AS analysis_recommendations,
+            ra.overall_score AS analysis_overall_score,
+            ra.architecture_score,
+            ra.documentation_score,
+            ra.code_quality_score,
+            ra.maintainability_score,
+            ra.security_score,
+            ra.testing_score,
+            ra.deployment_score,
+            ra.analyzed_at
+        FROM repositories r
+        LEFT JOIN repository_analysis ra ON ra.repository_id = r.id
+        WHERE r.user_id = ${userId}
+        ORDER BY r.updated_at DESC
     `;
 
     return {
         success: true,
         count: repositories.length,
-        repositories,
+        repositories: repositories.map(repo => ({
+            id: repo.id,
+            github_repo_id: repo.github_repo_id,
+            name: repo.name,
+            owner: repo.owner,
+            description: repo.description,
+            default_branch: repo.default_branch,
+            html_url: repo.html_url,
+            private: repo.private,
+            fork: repo.fork,
+            included: repo.included,
+            created_at: repo.created_at,
+            updated_at: repo.updated_at,
+            analysis: repo.analysis_summary ? {
+                summary: repo.analysis_summary,
+                strengths: repo.analysis_strengths || [],
+                weaknesses: repo.analysis_weaknesses || [],
+                recommendations: repo.analysis_recommendations || [],
+                overallScore: repo.analysis_overall_score,
+                scores: {
+                    architecture: repo.architecture_score,
+                    documentation: repo.documentation_score,
+                    codeQuality: repo.code_quality_score,
+                    maintainability: repo.maintainability_score,
+                    security: repo.security_score,
+                    testing: repo.testing_score,
+                    deployment: repo.deployment_score,
+                    overall: repo.analysis_overall_score,
+                },
+                analyzedAt: repo.analyzed_at,
+            } : null,
+        })),
     };
+};
+
+export const roastRepositoryService = async (userId, repoId) => {
+    const [repository] = await sql`
+        SELECT
+            r.name,
+            r.description,
+            ra.summary,
+            ra.strengths,
+            ra.weaknesses,
+            ra.documentation_score,
+            ra.code_quality_score,
+            ra.maintainability_score,
+            ra.security_score,
+            ra.testing_score,
+            ra.deployment_score,
+            ra.overall_score,
+            ra.technologies
+        FROM repositories r
+        LEFT JOIN repository_analysis ra ON ra.repository_id = r.id
+        WHERE r.id = ${repoId} AND r.user_id = ${userId}
+        LIMIT 1
+    `;
+
+    if (!repository) throw new Error("Repository not found.");
+    if (!repository.summary) throw new Error("Analyze this repository before requesting a roast.");
+    return await roastPortfolioWithAI([repository]);
 };
 
 export const toggleRepositoryService = async (userId, repoId) => {
@@ -172,8 +300,6 @@ export const analyzeRepositoryService = async (userId, repoId) => {
     // ==================================================
     // STEP 1: Get repository + GitHub access token
     // ==================================================s
-    console.log(process.env.DATABASE_URL);
-    console.log(new URL(process.env.DATABASE_URL).hostname);
     const repositories = await sql`
         SELECT r.*, o.access_token
         FROM repositories r
@@ -259,14 +385,18 @@ export const analyzeRepositoryService = async (userId, repoId) => {
 
 
     const existingAnalysis = await sql`
-    SELECT latest_commit_at
+    SELECT *
     FROM repository_analysis
     WHERE repository_id = ${repo.id}
     LIMIT 1
 `;
 
+    const priorArchitecture = typeof existingAnalysis[0]?.architecture === "string"
+        ? JSON.parse(existingAnalysis[0].architecture)
+        : existingAnalysis[0]?.architecture;
     if (
         existingAnalysis.length > 0 &&
+        Array.isArray(priorArchitecture?.evidence) && priorArchitecture.evidence.length > 0 &&
         new Date(existingAnalysis[0].latest_commit_at) >= new Date(latestCommit)
     ) {
         console.log("analysis is already done!")
@@ -305,6 +435,14 @@ export const analyzeRepositoryService = async (userId, repoId) => {
     // ==================================================
 
     const aiAnalysis = await analyzeRepositoryWithAI(context);
+    const validated = validateAnalysisEvidence(aiAnalysis, context, repo);
+    aiAnalysis.strengths = validated.findings.strengths;
+    aiAnalysis.weaknesses = validated.findings.weaknesses;
+    aiAnalysis.recommendations = validated.findings.recommendations;
+    aiAnalysis.architecture = {
+        ...(aiAnalysis.architecture && typeof aiAnalysis.architecture === "object" ? aiAnalysis.architecture : {}),
+        evidence: validated.evidence,
+    };
 
     /*
         aiAnalysis should return:
@@ -522,92 +660,19 @@ export const analyzeAllRepositoriesService = async (userId) => {
     };
 };
 
-export const generateProjectStoryService = async (
-    userId,
-    repositoryId
-) => {
-    /*
-     * STEP 1
-     * Fetch repository
-     */
-
+export const analyzePublicPortfolioRepositoryService = async (slug, repositoryId) => {
     const [repository] = await sql`
-        SELECT
-            r.id,
-            r.name,
-            r.owner,
-            r.description,
-            r.html_url,
-            r.default_branch,
-
-            ra.summary,
-            ra.architecture,
-            ra.languages,
-            ra.technologies,
-            ra.strengths,
-            ra.weaknesses,
-            ra.recommendations,
-            ra.project_story
-
-        FROM repositories r
-
-        JOIN repository_analysis ra
-            ON r.id = ra.repository_id
-
-        WHERE
-            r.id = ${repositoryId}
-            AND r.user_id = ${userId}
-
-        LIMIT 1;
+        SELECT u.id AS user_id, r.id AS repository_id
+        FROM users u
+        JOIN repositories r ON r.user_id = u.id
+        WHERE (u.portfolio_slug = ${slug} OR LOWER(u.github_username) = LOWER(${slug}))
+            AND r.id = ${repositoryId}
+            AND r.included = true
+            AND r.private = false
+        ORDER BY CASE WHEN u.portfolio_slug = ${slug} THEN 0 ELSE 1 END
+        LIMIT 1
     `;
 
-    if (!repository) {
-        throw new Error("Repository not found.");
-    }
-
-    /*
-     * STEP 2
-     * Return cached story if available
-     */
-
-    if (repository.project_story) {
-        return {
-            success: true,
-            cached: true,
-            repository: repository.name,
-            story: repository.project_story,
-        };
-    }
-
-    /*
-     * STEP 3
-     * Generate story
-     */
-
-    const story = await generateProjectStoryWithAI(repository);
-
-    /*
-     * STEP 4
-     * Save story
-     */
-
-    await sql`
-        UPDATE repository_analysis
-        SET
-            project_story = ${JSON.stringify(story)},
-            updated_at = NOW()
-        WHERE repository_id = ${repositoryId};
-    `;
-
-    /*
-     * STEP 5
-     * Return
-     */
-
-    return {
-        success: true,
-        cached: false,
-        repository: repository.name,
-        story,
-    };
+    if (!repository) throw new Error("Public portfolio repository not found.");
+    return await analyzeRepositoryService(repository.user_id, repository.repository_id);
 };

@@ -38,6 +38,14 @@ Return ONLY valid JSON.
   },
   "languages": {},
   "technologies": [],
+  "evidence": [
+    {
+      "category": "strengths",
+      "findingIndex": 0,
+      "sourcePath": "src/example.ts",
+      "quote": "an exact short excerpt copied from the source file"
+    }
+  ],
   "scores": {
     "architecture": 0,
     "documentation": 0,
@@ -53,6 +61,8 @@ Return ONLY valid JSON.
 Give every score between 0 and 100.
 
 Base the score on actual evidence found in the repository.
+
+For every item in strengths, weaknesses, and recommendations, provide at least one evidence entry. category must match one of those three arrays, findingIndex is its zero-based array index, sourcePath must be a path from the supplied files, and quote must be copied verbatim from that file (20-240 characters). Do not cite the repository tree or metadata as source code evidence. If a finding cannot be supported by an exact quote from a supplied file, omit that finding instead of inventing evidence. Do not include evidence entries for findings you omitted.
 
 Never guess.
 
@@ -349,114 +359,4 @@ Rules:
     );
 
     return JSON.parse(data.choices[0].message.content);
-};
-
-
-export const generateProjectStoryWithAI = async (repository) => {
-    const prompt = `
-You are a senior software engineer and technical writer.
-
-Generate a compelling story for this GitHub project.
-
-Repository:
-
-${JSON.stringify(repository)}
-
-Return ONLY valid JSON.
-
-{
-  "title": "",
-  "problem": "",
-  "goal": "",
-  "approach": "",
-  "technicalHighlights": [],
-  "challenges": [],
-  "keyLearnings": [],
-  "impact": "",
-  "futureImprovements": []
-}
-
-Rules:
-- Base the story only on the provided repository data.
-- Do not invent features that are not evident.
-- Keep the tone professional and suitable for recruiters.
-`;
-
-    const { data } = await axios.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        {
-            model: process.env.OPENROUTER_MODEL,
-            temperature: 0.4,
-            response_format: {
-                type: "json_object",
-            },
-            messages: [
-                {
-                    role: "system",
-                    content:
-                        "You are an expert software engineer. Return valid JSON only.",
-                },
-                {
-                    role: "user",
-                    content: prompt,
-                },
-            ],
-        },
-        {
-            headers: {
-                Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                "Content-Type": "application/json",
-                "HTTP-Referer": process.env.APP_URL,
-                "X-Title": "GitHub Portfolio Analyzer",
-            },
-        }
-    );
-
-    return JSON.parse(data.choices[0].message.content);
-};
-
-export const askPortfolioAI = async (portfolio, question) => {
-
-    const prompt = `
-You are an AI assistant for a developer's GitHub portfolio.
-
-Answer ONLY using the information provided.
-
-If the answer cannot be determined from the portfolio, say:
-"I couldn't find that information in the portfolio."
-
-Portfolio:
-
-${JSON.stringify(portfolio)}
-
-Question:
-${question}
-`;
-
-    const { data } = await axios.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        {
-            model: process.env.OPENROUTER_MODEL,
-            temperature: 0.2,
-            messages: [
-                {
-                    role: "system",
-                    content:
-                        "You are an expert software engineering assistant."
-                },
-                {
-                    role: "user",
-                    content: prompt
-                }
-            ]
-        },
-        {
-            headers: {
-                Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                "Content-Type": "application/json"
-            }
-        }
-    );
-
-    return data.choices[0].message.content;
 };

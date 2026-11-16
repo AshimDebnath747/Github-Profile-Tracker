@@ -4,6 +4,7 @@ import {
     getRepositories,
     toggleRepository,
     analyzeRepository,
+    roastRepository,
     getRepositoryHealth,
     analyzeAllRepositories,
     generateProjectStory
@@ -19,6 +20,8 @@ router.post("/repos/analyze-all", authenticate, analyzeAllRepositories);
 router.post("/repos/:id/project-story", authenticate, generateProjectStory);
 router.post("/repos/:id/toggle", authenticate, toggleRepository);
 router.post("/repos/:id/analyze", authenticate, analyzeRepository);
+router.post("/repos/:id/roast", authenticate, roastRepository);
+
 router.get(
     "/repos/:id/health",
     authenticate,
