@@ -5,6 +5,7 @@ import {
     analyzeRepositoryService,
     getRepositoryHealthService,
     analyzeAllRepositoriesService,
+    roastRepositoryService,
     generateProjectStoryService
 } from "../services/github.service.js";
 
