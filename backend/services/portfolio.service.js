@@ -1,5 +1,5 @@
 import { sql } from "../config/db.js";
-import { roastPortfolioWithAI, askPortfolioAI } from "./ai.service.js";
+import { roastPortfolioWithAI } from "./ai.service.js";
 
 export const generatePortfolioService = async (userId) => {
     /*
@@ -277,35 +277,35 @@ export const getPublicPortfolioService = async (slug) => {
                     ? JSON.parse(repo.analysis_architecture)
                     : repo.analysis_architecture;
                 return ({
-                id: repo.id,
-                github_repo_id: repo.github_repo_id,
-                name: repo.name,
-                owner: repo.owner,
-                description: repo.description,
-                html_url: repo.html_url,
-                default_branch: repo.default_branch,
-                private: repo.private,
-                fork: repo.fork,
-                analysis: repo.analysis_summary ? {
-                    summary: repo.analysis_summary,
-                    strengths: repo.analysis_strengths || [],
-                    weaknesses: repo.analysis_weaknesses || [],
-                    recommendations: repo.analysis_recommendations || [],
-                    evidence: Array.isArray(architecture?.evidence) ? architecture.evidence : [],
-                    overallScore: repo.analysis_overall_score,
-                    analyzedAt: repo.analyzed_at,
-                    scores: {
-                        architecture: repo.architecture_score,
-                        documentation: repo.documentation_score,
-                        codeQuality: repo.code_quality_score,
-                        maintainability: repo.maintainability_score,
-                        security: repo.security_score,
-                        testing: repo.testing_score,
-                        deployment: repo.deployment_score,
-                        overall: repo.analysis_overall_score,
-                    },
-                } : null,
-            });
+                    id: repo.id,
+                    github_repo_id: repo.github_repo_id,
+                    name: repo.name,
+                    owner: repo.owner,
+                    description: repo.description,
+                    html_url: repo.html_url,
+                    default_branch: repo.default_branch,
+                    private: repo.private,
+                    fork: repo.fork,
+                    analysis: repo.analysis_summary ? {
+                        summary: repo.analysis_summary,
+                        strengths: repo.analysis_strengths || [],
+                        weaknesses: repo.analysis_weaknesses || [],
+                        recommendations: repo.analysis_recommendations || [],
+                        evidence: Array.isArray(architecture?.evidence) ? architecture.evidence : [],
+                        overallScore: repo.analysis_overall_score,
+                        analyzedAt: repo.analyzed_at,
+                        scores: {
+                            architecture: repo.architecture_score,
+                            documentation: repo.documentation_score,
+                            codeQuality: repo.code_quality_score,
+                            maintainability: repo.maintainability_score,
+                            security: repo.security_score,
+                            testing: repo.testing_score,
+                            deployment: repo.deployment_score,
+                            overall: repo.analysis_overall_score,
+                        },
+                    } : null,
+                });
             }),
             stats: {
                 totalRepositories: repositories.length,
