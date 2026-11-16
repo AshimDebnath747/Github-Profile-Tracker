@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://github-profile-tracker-geuq.onrender.com/api';
 
 export class ApiError extends Error { constructor(message: string, public status: number) { super(message); this.name = 'ApiError'; } }
 
