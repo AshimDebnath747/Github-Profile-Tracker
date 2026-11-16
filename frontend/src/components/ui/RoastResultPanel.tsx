@@ -1,0 +1,6 @@
+import { Flame } from 'lucide-react';
+import type { RoastResult } from '@/types/api';
+
+export function RoastResultPanel({ result, compact = false }: { result: RoastResult; compact?: boolean }) {
+  return <section className={`roast-result${compact ? ' roast-result-compact' : ''}`} aria-live="polite"><div className="roast-heading"><span className="roast-icon"><Flame size={18}/></span><div className="roast-heading-copy"><div className="eyebrow">{compact ? 'REPOSITORY ROAST' : 'THE PORTFOLIO ROAST'}</div><h2>{result.title || 'Your code, under the spotlight.'}</h2></div><div className={`roast-rating severity-${result.severity}`}><strong>{result.rating}<small>/10</small></strong><span>{result.severity} heat</span></div></div><p className="roast-copy">{result.roast}</p><div className="roast-columns"><section><h3>What stands out</h3><ul>{result.highlights.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul></section><section><h3>Ways to level up</h3><ul>{result.recommendations.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul></section></div>{result.funniestMoment && <blockquote><span>FUNNIEST MOMENT</span>{result.funniestMoment}</blockquote>}{result.closingRemark && <p className="roast-closing">{result.closingRemark}</p>}{result.cached && <div className="roast-footnote">Showing a recent roast.</div>}</section>;
+}

@@ -20,7 +20,6 @@ export const githubCallback = async (req, res, next) => {
         const { code } = req.query;
 
         const result = await githubCallbackService(code);
-        console.log(result)
         res.cookie("token", result.token, {
             httpOnly: true,
             secure: false,
@@ -28,8 +27,8 @@ export const githubCallback = async (req, res, next) => {
             maxAge: 7 * 24 * 60 * 60 * 1000,
         });
 
-        // We'll later replace this with JWT cookie + redirect
-        return res.json(result);
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+        return res.redirect(303, frontendUrl);
     } catch (error) {
         next(error);
     }

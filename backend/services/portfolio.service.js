@@ -18,6 +18,11 @@ export const generatePortfolioService = async (userId) => {
         throw new Error("User not found.");
     }
 
+    const publicSlug = user.portfolio_slug || user.github_username;
+    if (!publicSlug) {
+        throw new Error("A public portfolio link cannot be created without a GitHub username.");
+    }
+
     /*
      * STEP 2
      * Create portfolio if it doesn't exist
@@ -134,7 +139,7 @@ export const generatePortfolioService = async (userId) => {
     return {
         success: true,
 
-        portfolioUrl: `/portfolio/${user.portfolio_slug}`,
+        portfolioUrl: `/portfolio/${encodeURIComponent(publicSlug)}`,
 
         portfolio: {
             id: updatedPortfolio.id,
@@ -179,6 +184,8 @@ export const getPublicPortfolioService = async (slug) => {
             portfolio_slug
         FROM users
         WHERE portfolio_slug = ${slug}
+            OR LOWER(github_username) = LOWER(${slug})
+        ORDER BY CASE WHEN portfolio_slug = ${slug} THEN 0 ELSE 1 END
         LIMIT 1
     `;
 
@@ -188,6 +195,13 @@ export const getPublicPortfolioService = async (slug) => {
 
     const user = users[0];
 
+    const [portfolioSettings] = await sql`
+        SELECT display_name, tagline, bio, social_links, resume_url, display_email, show_github_stats, id
+        FROM portfolios
+        WHERE user_id = ${user.id} AND status = 'ready'
+        LIMIT 1
+    `;
+
     /*
         STEP 2
         Get included repositories
@@ -195,19 +209,45 @@ export const getPublicPortfolioService = async (slug) => {
 
     const repositories = await sql`
         SELECT
-            id,
-            github_repo_id,
-            name,
-            owner,
-            description,
-            html_url,
-            default_branch,
-            private,
-            fork
-        FROM repositories
-        WHERE user_id = ${user.id}
-        AND included = true
-        ORDER BY updated_at DESC
+            r.id,
+            r.github_repo_id,
+            r.name,
+            r.owner,
+            r.description,
+            r.html_url,
+            r.default_branch,
+            r.private,
+            r.fork,
+            ra.summary AS analysis_summary,
+            ra.strengths AS analysis_strengths,
+            ra.weaknesses AS analysis_weaknesses,
+            ra.recommendations AS analysis_recommendations,
+            ra.overall_score AS analysis_overall_score,
+            ra.architecture AS analysis_architecture,
+            ra.architecture_score,
+            ra.documentation_score,
+            ra.code_quality_score,
+            ra.maintainability_score,
+            ra.security_score,
+            ra.testing_score,
+            ra.deployment_score,
+            ra.analyzed_at
+        FROM repositories r
+        LEFT JOIN repository_analysis ra ON ra.repository_id = r.id
+        WHERE r.user_id = ${user.id}
+            AND r.included = true
+            AND r.private = false
+            AND (
+                NOT EXISTS (
+                    SELECT 1 FROM portfolio_featured_repositories pfr
+                    WHERE pfr.portfolio_id = ${portfolioSettings?.id ?? null}
+                )
+                OR r.id IN (
+                    SELECT pfr.repository_id FROM portfolio_featured_repositories pfr
+                    WHERE pfr.portfolio_id = ${portfolioSettings?.id ?? null}
+                )
+            )
+        ORDER BY r.updated_at DESC
     `;
 
     /*
@@ -220,14 +260,53 @@ export const getPublicPortfolioService = async (slug) => {
         portfolio: {
             user: {
                 username: user.github_username,
-                name: user.name,
+                name: portfolioSettings?.display_name || user.name,
                 avatar: user.avatar_url,
-                bio: user.bio,
+                bio: portfolioSettings?.bio || user.bio,
+                tagline: portfolioSettings?.tagline || null,
                 location: user.location,
-                linkedin: user.linkedin_url,
+                linkedin: portfolioSettings?.social_links?.linkedin || user.linkedin_url,
+                socialLinks: portfolioSettings?.social_links || {},
+                resumeUrl: portfolioSettings?.resume_url || null,
+                displayEmail: portfolioSettings?.display_email || null,
+                showGithubStats: portfolioSettings?.show_github_stats !== false,
                 slug: user.portfolio_slug,
             },
-            repositories,
+            repositories: repositories.map(repo => {
+                const architecture = typeof repo.analysis_architecture === "string"
+                    ? JSON.parse(repo.analysis_architecture)
+                    : repo.analysis_architecture;
+                return ({
+                id: repo.id,
+                github_repo_id: repo.github_repo_id,
+                name: repo.name,
+                owner: repo.owner,
+                description: repo.description,
+                html_url: repo.html_url,
+                default_branch: repo.default_branch,
+                private: repo.private,
+                fork: repo.fork,
+                analysis: repo.analysis_summary ? {
+                    summary: repo.analysis_summary,
+                    strengths: repo.analysis_strengths || [],
+                    weaknesses: repo.analysis_weaknesses || [],
+                    recommendations: repo.analysis_recommendations || [],
+                    evidence: Array.isArray(architecture?.evidence) ? architecture.evidence : [],
+                    overallScore: repo.analysis_overall_score,
+                    analyzedAt: repo.analyzed_at,
+                    scores: {
+                        architecture: repo.architecture_score,
+                        documentation: repo.documentation_score,
+                        codeQuality: repo.code_quality_score,
+                        maintainability: repo.maintainability_score,
+                        security: repo.security_score,
+                        testing: repo.testing_score,
+                        deployment: repo.deployment_score,
+                        overall: repo.analysis_overall_score,
+                    },
+                } : null,
+            });
+            }),
             stats: {
                 totalRepositories: repositories.length,
                 publicRepositories: repositories.filter(
@@ -260,6 +339,18 @@ export const getPortfolioService = async (userId) => {
 
     const portfolio = portfolioResult[0];
 
+    const [user] = await sql`
+        SELECT
+            portfolio_slug,
+            github_username,
+            name,
+            avatar_url,
+            bio
+        FROM users
+        WHERE id = ${userId}
+        LIMIT 1
+    `;
+
     const featuredRepositories = await sql`
         SELECT
             r.id,
@@ -277,6 +368,11 @@ export const getPortfolioService = async (userId) => {
 
     return {
         ...portfolio,
+        portfolio_slug: user?.portfolio_slug ?? null,
+        github_username: user?.github_username ?? null,
+        user_name: user?.name ?? null,
+        avatar_url: user?.avatar_url ?? null,
+        user_bio: user?.bio ?? null,
         featuredRepositories,
     };
 };
@@ -434,5 +530,44 @@ export const roastPortfolioService = async (userId) => {
     }
     console.log(repositories.length)
 
+    return await roastPortfolioWithAI(repositories);
+};
+
+export const roastPublicPortfolioService = async (slug) => {
+    const [user] = await sql`
+        SELECT id
+        FROM users
+        WHERE portfolio_slug = ${slug}
+            OR LOWER(github_username) = LOWER(${slug})
+        ORDER BY CASE WHEN portfolio_slug = ${slug} THEN 0 ELSE 1 END
+        LIMIT 1
+    `;
+
+    if (!user) throw new Error("Portfolio not found.");
+
+    const repositories = await sql`
+        SELECT
+            r.name,
+            r.description,
+            ra.summary,
+            ra.strengths,
+            ra.weaknesses,
+            ra.documentation_score,
+            ra.code_quality_score,
+            ra.maintainability_score,
+            ra.security_score,
+            ra.testing_score,
+            ra.deployment_score,
+            ra.overall_score,
+            ra.technologies
+        FROM repositories r
+        JOIN repository_analysis ra ON ra.repository_id = r.id
+        WHERE r.user_id = ${user.id}
+            AND r.included = true
+            AND r.private = false
+        ORDER BY r.updated_at DESC
+    `;
+
+    if (!repositories.length) throw new Error("No analyzed public repositories found.");
     return await roastPortfolioWithAI(repositories);
 };

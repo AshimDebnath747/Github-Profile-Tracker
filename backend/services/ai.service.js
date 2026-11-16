@@ -38,6 +38,14 @@ Return ONLY valid JSON.
   },
   "languages": {},
   "technologies": [],
+  "evidence": [
+    {
+      "category": "strengths",
+      "findingIndex": 0,
+      "sourcePath": "src/example.ts",
+      "quote": "an exact short excerpt copied from the source file"
+    }
+  ],
   "scores": {
     "architecture": 0,
     "documentation": 0,
@@ -53,6 +61,8 @@ Return ONLY valid JSON.
 Give every score between 0 and 100.
 
 Base the score on actual evidence found in the repository.
+
+For every item in strengths, weaknesses, and recommendations, provide at least one evidence entry. category must match one of those three arrays, findingIndex is its zero-based array index, sourcePath must be a path from the supplied files, and quote must be copied verbatim from that file (20-240 characters). Do not cite the repository tree or metadata as source code evidence. If a finding cannot be supported by an exact quote from a supplied file, omit that finding instead of inventing evidence. Do not include evidence entries for findings you omitted.
 
 Never guess.
 
