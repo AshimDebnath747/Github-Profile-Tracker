@@ -14,6 +14,7 @@ import { authenticate } from "../middlewares/auth.middleware.js";
 const router = express.Router();
 
 router.post("/generate", authenticate, generatePortfolio);
+router.post("/chat", authenticate, chatPortfolio);
 router.get("/roast", authenticate, roastPortfolio)
 router.post("/:slug/repositories/:id/analyze", analyzePublicPortfolioRepository);
 router.post("/:slug/roast", roastPublicPortfolio);

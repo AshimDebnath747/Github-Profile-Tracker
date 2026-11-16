@@ -1,5 +1,5 @@
 import { sql } from "../config/db.js";
-import { roastPortfolioWithAI } from "./ai.service.js";
+import { roastPortfolioWithAI, askPortfolioAI } from "./ai.service.js";
 
 export const generatePortfolioService = async (userId) => {
     /*
