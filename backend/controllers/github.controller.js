@@ -5,8 +5,7 @@ import {
     analyzeRepositoryService,
     getRepositoryHealthService,
     analyzeAllRepositoriesService,
-    roastRepositoryService,
-    generateProjectStoryService
+    roastRepositoryService
 } from "../services/github.service.js";
 
 export const syncRepositories = async (req, res, next) => {
