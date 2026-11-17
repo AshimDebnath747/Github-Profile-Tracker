@@ -9,6 +9,7 @@ import authRoutes from "./routes/auth.routes.js";
 import githubRoutes from "./routes/github.routes.js";
 import portfolioRoutes from "./routes/portfolio.routes.js";
 import dashboardRouter from "./routes/dashboard.routes.js";
+import { createProxyMiddleware } from "http-proxy-middleware";
 // import jobsRoutes from "./routes/jobs.routes.js";
 
 // Load environment variables
@@ -18,7 +19,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const { createProxyMiddleware } = require("http-proxy-middleware");
+
 
 /* ----------------------------- Middlewares ----------------------------- */
 const BACKEND_URL = process.env.APP_URL;
