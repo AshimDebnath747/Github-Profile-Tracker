@@ -37,8 +37,39 @@ app.use(
         target: BACKEND_URL,
         changeOrigin: true,
         pathRewrite: (path) => `/api${path}`,
+        on: {
+            proxyReq: (proxyReq, req) => {
+                console.log("API:", req.originalUrl, "->", BACKEND_URL);
+            },
+            error: (err, req, res) => {
+                console.error("API proxy error:", err.message);
+                if (!res.headersSent) {
+                    res.status(502).json({ message: "Backend proxy failed" });
+                }
+            },
+        },
     })
 );
+
+app.use(
+    "/",
+    createProxyMiddleware({
+        target: FRONTEND_URL,
+        changeOrigin: true,
+        on: {
+            proxyReq: (proxyReq, req) => {
+                console.log("Frontend:", req.originalUrl, "->", FRONTEND_URL);
+            },
+            error: (err, req, res) => {
+                console.error("Frontend proxy error:", err.message);
+                if (!res.headersSent) {
+                    res.status(502).send("Frontend proxy failed");
+                }
+            },
+        },
+    })
+);
+
 
 // Everything else goes to React frontend
 app.use(
