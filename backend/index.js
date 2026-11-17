@@ -1,76 +1,79 @@
-
 import express from "express";
 import dotenv from "dotenv";
-import { createProxyMiddleware } from "http-proxy-middleware";
+import cors from "cors";
+import cookieParser from "cookie-parser";
 
+// Routes
+import authRoutes from "./routes/auth.routes.js";
+// import studentRoutes from "./routes/student.routes.js";
+import githubRoutes from "./routes/github.routes.js";
+import portfolioRoutes from "./routes/portfolio.routes.js";
+import dashboardRouter from "./routes/dashboard.routes.js";
+// import jobsRoutes from "./routes/jobs.routes.js";
+
+// Load environment variables
 dotenv.config();
 
+
+
 const app = express();
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 5000;
 
-const BACKEND_URL = process.env.APP_URL;
-const FRONTEND_URL = process.env.FRONTEND_URL;
-
-if (!BACKEND_URL || !FRONTEND_URL) {
-    throw new Error("APP_URL and FRONTEND_URL must be configured");
-}
+/* ----------------------------- Middlewares ----------------------------- */
 
 app.set("trust proxy", 1);
+app.use(
+    cors({
+        origin: process.env.FRONTEND_URL,
+        credentials: true,
+    })
+);
 
-// Health check
-app.get("/health", (req, res) => {
-    res.json({ status: "Proxy is running" });
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
+/* ------------------------------ Health Check ------------------------------ */
+
+app.get("/", (req, res) => {
+    res.json({
+        success: true,
+        message: "Campus Portfolio Verifier API",
+        version: "1.0.0",
+    });
 });
 
-// API requests -> Backend
-app.use(
-    "/api",
-    createProxyMiddleware({
-        target: BACKEND_URL,
-        changeOrigin: true,
+/* -------------------------------- Routes -------------------------------- */
 
-        // Express strips /api when middleware is mounted at /api.
-        pathRewrite: (path) => `/api${path}`,
+app.use("/api/auth", authRoutes);
+// app.use("/api/student", studentRoutes);
+app.use("/api/github", githubRoutes);
+app.use("/api/portfolio", portfolioRoutes);
+app.use("/api/dashboard", dashboardRouter);
+// app.use("/api/jobs", jobsRoutes);
 
-        on: {
-            proxyReq: (proxyReq, req) => {
-                console.log("API:", req.originalUrl, "->", BACKEND_URL);
-            },
-            error: (err, req, res) => {
-                console.error("API proxy error:", err.message);
+/* ---------------------------- 404 Middleware ---------------------------- */
 
-                if (!res.headersSent) {
-                    res.status(502).json({
-                        success: false,
-                        message: "Backend proxy failed",
-                    });
-                }
-            },
-        },
-    })
-);
+app.use((req, res) => {
+    res.status(404).json({
+        success: false,
+        message: "Route not found",
+    });
+});
 
-// All other requests -> React frontend
-app.use(
-    "/",
-    createProxyMiddleware({
-        target: FRONTEND_URL,
-        changeOrigin: true,
-        on: {
-            proxyReq: (proxyReq, req) => {
-                console.log("Frontend:", req.originalUrl, "->", FRONTEND_URL);
-            },
-            error: (err, req, res) => {
-                console.error("Frontend proxy error:", err.message);
+/* -------------------------- Global Error Handler ------------------------- */
 
-                if (!res.headersSent) {
-                    res.status(502).send("Frontend proxy failed");
-                }
-            },
-        },
-    })
-);
+app.use((err, req, res, next) => {
+    console.error(err);
 
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Proxy running on port ${PORT}`);
+    res.status(err.status || 500).json({
+        success: false,
+        message: err.message || "Internal Server Error",
+    });
+});
+
+/* ------------------------------ Start Server ----------------------------- */
+
+app.listen(PORT, () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
