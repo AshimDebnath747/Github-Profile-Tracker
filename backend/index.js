@@ -18,9 +18,11 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const { createProxyMiddleware } = require("http-proxy-middleware");
 
 /* ----------------------------- Middlewares ----------------------------- */
-
+const BACKEND_URL = process.env.APP_URL;
+const FRONTEND_URL = process.env.FRONTEND_URL;
 app.set("trust proxy", 1);
 app.use(
     cors({
@@ -28,7 +30,23 @@ app.use(
         credentials: true,
     })
 );
+app.use(
+    "/api",
+    createProxyMiddleware({
+        target: BACKEND_URL,
+        changeOrigin: true,
+        pathRewrite: (path) => `/api${path}`,
+    })
+);
 
+// Everything else goes to React frontend
+app.use(
+    "/",
+    createProxyMiddleware({
+        target: FRONTEND_URL,
+        changeOrigin: true,
+    })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
