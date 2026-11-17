@@ -31,7 +31,7 @@ export const githubCallback = async (req, res, next) => {
 
         const frontendUrl = process.env.FRONTEND_URL;
 
-        return res.redirect(303, `${frontendUrl}/dashboard`);
+        return res.redirect(303, `${frontendUrl}`);
     } catch (error) {
         next(error);
     }
